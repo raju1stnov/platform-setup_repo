@@ -1,0 +1,23 @@
+version: 1
+formatters:
+  simple:
+    format: "%(levelprefix)s %(asctime)s | %(name)s | %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: simple
+    level: INFO
+    stream: ext://sys.stdout
+loggers:
+  uvicorn:
+    level: INFO
+  uvicorn.error:
+    level: INFO
+  uvicorn.access:
+    level: INFO
+  webcrawler_agent:
+    level: INFO
+root:
+  level: INFO
+  handlers: [console]

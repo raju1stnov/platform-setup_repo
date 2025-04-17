@@ -1,0 +1,23 @@
+version: 1
+formatters:
+  default:
+    format: "[dbservice_agent] %(levelname)s %(message)s"
+# ... (handlers and loggers similar to above)
+handlers:
+  console:
+    class: logging.StreamHandler
+    formatter: default
+    level: INFO
+    stream: ext://sys.stdout
+loggers:
+  uvicorn.error:
+    level: INFO
+    handlers: [console]
+    propagate: no
+  uvicorn.access:
+    level: INFO
+    handlers: [console]
+    propagate: no
+root:
+  level: INFO
+  handlers: [console]

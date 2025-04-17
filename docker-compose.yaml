@@ -1,0 +1,66 @@
+version: '3.9'
+services:
+  auth_agent:
+    build: ./auth_agent
+    container_name: auth_agent
+    ports:
+      - "8100:8000"
+    networks:
+      - agents_net
+
+  webservice_agent:
+    build: ./webservice_agent
+    container_name: webservice_agent
+    ports:
+      - "8101:8000"
+    networks:
+      - agents_net
+    depends_on:
+      - dbservice_agent  # webservice might call dbservice
+      - a2a_registry
+
+  dbservice_agent:
+    build: ./dbservice_agent
+    container_name: dbservice_agent
+    ports:
+      - "8102:8000"
+    networks:
+      - agents_net
+    volumes:
+      - ./dbservice_agent/data:/app/data
+    depends_on:
+      - a2a_registry
+
+  fake_auth_service:
+    build: ./fake_auth_service
+    container_name: fake_auth_service
+    ports:
+      - "8103:8000"
+    networks:
+      - agents_net
+    depends_on:
+      - a2a_registry
+
+  a2a_registry:
+    build: ./a2a_registry
+    container_name: a2a_registry
+    ports:
+      - "8104:8000"
+    networks:
+      - agents_net
+    volumes:
+      - ./a2a_registry/data:/app/data
+
+  webcrawler_agent:
+    build: ./webcrawler_agent
+    container_name: webcrawler_agent
+    ports:
+      - "8106:8080"
+    networks:
+      - agents_net
+    depends_on:
+      - a2a_registry
+
+networks:
+  agents_net:
+    driver: bridge
