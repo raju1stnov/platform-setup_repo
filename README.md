@@ -1,13 +1,8 @@
-
-
-
-
 **Rebuild with clean cache:**
 
 docker-compose down -v  # Remove containers and volumes
 docker-compose build --no-cache  # Force fresh rebuild
 docker-compose up -d
-
 
 ```css
 platform-setup_repo/
@@ -50,7 +45,6 @@ platform-setup_repo/
 └── docker-compose.yml
 
 ```
-
 
 ```mermaid
 flowchart TD
@@ -114,7 +108,6 @@ ws_search_tool -->|A2A list_candidates| webcrawler_agent
 webcrawler_agent -->|MCP call| wc_list_tool
 ```
 
-
 ```css
 Service Name	Container Port	Host Port	Network Alias (Service Name)	URL in config.py (Default)	Expected Runtime URL (Inter-Container)	Status
 auth_agent	8000	8100	auth_agent	http://auth_agent:8000/a2a	http://auth_agent:8000/a2a	Correct
@@ -124,7 +117,6 @@ fake_auth_service	8000	8103	fake_auth_service	(Not directly called by HRA)	http:
 a2a_registry	8000	8104	a2a_registry	http://a2a_registry:8000/a2a (if used)	http://a2a_registry:8000/a2a	Correct
 webcrawler_agent	8080	8106	webcrawler_agent	(Not directly called by HRA)	http://webcrawler_agent:8080/a2a	N/A
 ```
-
 
 ## Auth Agent Service (`auth_agent`)
 
@@ -138,6 +130,17 @@ webcrawler_agent	8080	8106	webcrawler_agent	(Not directly called by HRA)	http://
 *Notes:* The Auth agent’s `login` method illustrates an  **A2A call** : it posts a JSON-RPC request to the `fake_auth_service`’s `/a2a` endpoint (discovered via the registry). The internal functions in `mcp_tools` abstract away these details, so the main JSON-RPC handler simply calls `mcp_tools.login()` or `mcp_tools.verify_token()`. This separation of concerns is analogous to MCP’s design (tools functions are defined separately from the model or API interface).
 
 **`auth_agent/logging_config.yml`:** Logging configuration for Uvicorn and the app, ensuring each log line is prefixed with the service name (for structured logs).
+
+## log_ingest_agent
+
+This agent subscribes to a Pub/Sub subscription (that your Cloud Logging sink publishes to) and relays any received log entries to the router agent via an internal JSON-RPC call. It also provides a method to simulate dummy logs for testing the pipeline.
+
+**Notes:** The `log_ingest_agent` starts a background Pub/Sub listener on startup. The `handle_message` callback will forward each log entry to the router and only acknowledge the Pub/Sub message if routing succeeds (so that on failure, the message can be retried). The `simulate_logs` function publishes one or more dummy log entries to the Pub/Sub topic (triggering the normal ingest flow) and is independent of any polling logic.
+
+## log_router_agent
+
+The router agent receives log entries (via the `/a2a` JSON-RPC endpoint) and determines where to send them. In our setup, all logs are forwarded to the BigQuery sink agent. The implementation can be extended with filtering or routing rules (e.g., based on log severity or source) if needed.
+
 
 ## Webservice Agent Service (`webservice_agent`)
 
@@ -191,8 +194,6 @@ When the `save_candidates` node sends an A2A call to `dbservice_agent` via JSON-
 ```
 
 The MCP tool `create_record()` will store this in `candidates.db`.
-
-
 
 ## Fake Auth Service (`fake_auth_service`)
 

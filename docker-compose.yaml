@@ -61,6 +61,48 @@ services:
     depends_on:
       - a2a_registry
 
+  log_ingest_agent:
+    build: ./log_ingest_agent
+    container_name: log_ingest_agent
+    ports: ["8107:8000"]
+    env_file: .env
+    volumes:
+      - ./application_default_credentials.json:/app/application_default_credentials.json
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/application_default_credentials.json
+      - GCP_PROJECT_ID=${PROJECT_ID}         # map external → internal name
+      - PUBSUB_TOPIC=${PUBSUB_TOPIC}
+      - LOG_ROUTER_URL=http://log_router_agent:8000
+    networks: [agents_net]
+    depends_on: [a2a_registry]
+
+  log_router_agent:
+    build: ./log_router_agent
+    container_name: log_router_agent
+    ports: ["8108:8000"]
+    env_file: .env
+    environment:
+      - GCP_PROJECT_ID=${PROJECT_ID}
+      - PUBSUB_SUBSCRIPTION=${PUBSUB_SUBSCRIPTION}
+      - BIGQUERY_SINK_URL=http://bigquery_sink_agent:8000
+    networks: [agents_net]
+    depends_on: [a2a_registry, log_ingest_agent, bigquery_sink_agent]
+
+  bigquery_sink_agent:
+    build: ./bigquery_sink_agent
+    container_name: bigquery_sink_agent
+    ports: ["8109:8000"]
+    env_file: .env
+    volumes:
+      - ./application_default_credentials.json:/app/application_default_credentials.json
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/application_default_credentials.json
+      - GCP_PROJECT_ID=${PROJECT_ID}
+      - BQ_DATASET=${DATASET_ID}                       # map external → internal
+      - BQ_TABLE=${PROJECT_ID}.${DATASET_ID}.error_logs
+    networks: [agents_net]
+    depends_on: [a2a_registry]
+
 networks:
   agents_net:
     driver: bridge

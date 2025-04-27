@@ -1,0 +1,4 @@
+google-cloud-logging
+google-cloud-pubsub
+fastapi          # assuming FastAPI is used for exposing the MCP interface
+uvicorn[standard]  # for running the web service (if not already included elsewhere)

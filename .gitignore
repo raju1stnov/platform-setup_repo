@@ -1,3 +1,4 @@
 myenv
 __pycache__/
 *.py[cod]
+manual_log_pipeline_test.py

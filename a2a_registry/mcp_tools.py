@@ -183,6 +183,69 @@ AGENT_CARDS_SEED_DATA = [
                 ]
             )
         ]
+    },
+    {
+        "name": "log_ingest_agent",
+        "description":  "Fetches recent logs from Cloud Logging and publishes to Pub/Sub.",
+        "url": "http://log_ingest_agent:8000/a2a",
+        "url_ext": "http://localhost:8107/a2a",
+        "methods": [
+            create_method_metadata(
+                name="fetch_logs",
+                description="Fetches the last 30s of logs and publishes them to Pub/Sub.",                
+                params=[],  # no params
+                returns=[
+                    {"name": "published", "type": "integer",
+                     "description": "Number of log entries published"}
+                ]
+            )            
+        ]
+    },
+    {
+        "name": "log_router_agent",
+        "description": "Subscribes to Pub/Sub and routes each log to BigQuery sink agent.",
+        "url": "http://log_router_agent:8000/a2a",
+        "url_ext": "http://localhost:8108/a2a",
+        "methods": [
+            create_method_metadata(
+                name="start_subscription",
+                description="Begin listening on the Pub/Sub subscription and routing logs.",                
+                params=[],
+                returns=[{"name": "status", "type": "string",
+                          "description": "'listening' or 'already_listening'"}]
+            ),    
+            create_method_metadata(
+                name="route_log",
+                description="Route one JSON-string log entry to the BigQuery sink.",
+                params=[{"name": "log_entry", "type": "string", "required": True,
+                         "description": "The JSON-string log payload"}],
+                returns=[{"name": "routed", "type": "boolean", "description": "True if successful"}]
+            )        
+        ]
+    },
+    {
+        "name": "bigquery_sink_agent",
+        "description": "Inserts routed log entries into a BigQuery table.",
+        "url": "http://bigquery_sink_agent:8000/a2a",
+        "url_ext": "http://localhost:8109/a2a",
+        "methods": [
+            create_method_metadata(
+                name="insert_log",
+                description="Insert a single JSON-string log entry into BigQuery.",
+                params=[{"name": "log_entry", "type": "string", "required": True,
+                         "description": "JSON-string of the log entry"}],
+                returns=[{"name": "inserted", "type": "integer",
+                          "description": "Number of rows inserted (1 or 0 on error)"}]
+            ),
+            create_method_metadata(
+                name="insert_logs",
+                description="Insert multiple JSON-string log entries in one batch.",
+                params=[{"name": "log_entries", "type": "array[string]", "required": True,
+                         "description": "List of JSON-string log entries"}],
+                returns=[{"name": "inserted", "type": "integer",
+                          "description": "Number of rows inserted"}]
+            )
+        ]
     }
 ]
 
