@@ -84,24 +84,12 @@ services:
     environment:
       - GCP_PROJECT_ID=${PROJECT_ID}
       - PUBSUB_SUBSCRIPTION=${PUBSUB_SUBSCRIPTION}
-      - BIGQUERY_SINK_URL=http://bigquery_sink_agent:8000
-    networks: [agents_net]
-    depends_on: [a2a_registry, log_ingest_agent, bigquery_sink_agent]
-
-  bigquery_sink_agent:
-    build: ./bigquery_sink_agent
-    container_name: bigquery_sink_agent
-    ports: ["8109:8000"]
-    env_file: .env
+      - BQ_DATASET=${DATASET_ID}
+      - BQ_TABLE=${TABLE_ID}
     volumes:
-      - ./application_default_credentials.json:/app/application_default_credentials.json
-    environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/application_default_credentials.json
-      - GCP_PROJECT_ID=${PROJECT_ID}
-      - BQ_DATASET=${DATASET_ID}                       # map external → internal
-      - BQ_TABLE=${PROJECT_ID}.${DATASET_ID}.error_logs
+      - ./application_default_credentials.json:/app/application_default_credentials.json  
     networks: [agents_net]
-    depends_on: [a2a_registry]
+    depends_on: [a2a_registry]  
 
 networks:
   agents_net:

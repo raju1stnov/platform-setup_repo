@@ -222,30 +222,6 @@ AGENT_CARDS_SEED_DATA = [
                 returns=[{"name": "routed", "type": "boolean", "description": "True if successful"}]
             )        
         ]
-    },
-    {
-        "name": "bigquery_sink_agent",
-        "description": "Inserts routed log entries into a BigQuery table.",
-        "url": "http://bigquery_sink_agent:8000/a2a",
-        "url_ext": "http://localhost:8109/a2a",
-        "methods": [
-            create_method_metadata(
-                name="insert_log",
-                description="Insert a single JSON-string log entry into BigQuery.",
-                params=[{"name": "log_entry", "type": "string", "required": True,
-                         "description": "JSON-string of the log entry"}],
-                returns=[{"name": "inserted", "type": "integer",
-                          "description": "Number of rows inserted (1 or 0 on error)"}]
-            ),
-            create_method_metadata(
-                name="insert_logs",
-                description="Insert multiple JSON-string log entries in one batch.",
-                params=[{"name": "log_entries", "type": "array[string]", "required": True,
-                         "description": "List of JSON-string log entries"}],
-                returns=[{"name": "inserted", "type": "integer",
-                          "description": "Number of rows inserted"}]
-            )
-        ]
     }
 ]
 

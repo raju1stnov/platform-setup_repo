@@ -1,68 +1,111 @@
 import os, json, logging, threading
-from google.cloud import pubsub_v1
+from typing import cast
+from datetime import datetime, timezone, timedelta
+from google.cloud import pubsub_v1, bigquery
 from google.cloud.pubsub_v1.subscriber.message import Message
+from google.protobuf.json_format import MessageToDict
+from google.cloud.logging_v2.services.logging_service_v2 import LoggingServiceV2Client
 import httpx
 
 logger = logging.getLogger("log_router_agent.mcp")
 logger.setLevel(logging.INFO)
 
+SEVERITY_MAP = {
+    0: "DEFAULT",
+    100: "DEBUG",
+    200: "INFO",
+    300: "NOTICE",
+    400: "WARNING",
+    500: "ERROR",
+    600: "CRITICAL",
+    700: "ALERT",
+    800: "EMERGENCY",
+}
+
 class MCP:
+    """
+    Manual-only router:
+      1) call manual_pull_insert()
+      2) it pulls up to N messages
+      3) inserts them into BigQuery (single JSON column 'log_entry')
+      4) ACKs what it actually inserted
+      5) returns a summary dict
+    """
     def __init__(self):
-        self.project_id      = os.getenv("GCP_PROJECT_ID")
-        self.subscription_id = os.getenv("PUBSUB_SUBSCRIPTION")
-        # self.bq_sink_url     = os.getenv("BIGQUERY_SINK_URL")  # e.g. http://bigquery_sink_agent:8000/a2a
-        raw = os.getenv("BIGQUERY_SINK_URL")
+        # BigQuery Configuration
+        self.project_id      = cast(str, os.getenv("GCP_PROJECT_ID"))
+        self.dataset_id      = cast(str, os.getenv("BQ_DATASET"))
+        self.table_id        = cast(str, os.getenv("BQ_TABLE"))
+        self.table_ref = f"{self.project_id}.{self.dataset_id}.{self.table_id}"
 
-        if not (self.project_id and self.subscription_id and raw):
-            raise RuntimeError("GCP_PROJECT_ID, PUBSUB_SUBSCRIPTION, and BIGQUERY_SINK_URL must be set")
-        self.bq_sink_url: str = raw
+        # Pub/Sub Configuration
+        self.subscription_id = cast(str, os.getenv("PUBSUB_SUBSCRIPTION"))
+
+        # Validate configuration
+        if not all([self.project_id, self.dataset_id, self.table_id, self.subscription_id]):
+            raise RuntimeError("Missing required environment variables")
+        
+        # Initialize clients
+        self.bq_client = bigquery.Client()
         self.subscriber = pubsub_v1.SubscriberClient()
-        self.sub_path   = self.subscriber.subscription_path(self.project_id, self.subscription_id)
-        self._listening = False
+        self.sub_path = self.subscriber.subscription_path(self.project_id, self.subscription_id)
+        
+        # Ensure BigQuery table exists
+        self._ensure_bq_table()       
+        # self._listening = False
 
-    def start_subscription(self) -> dict:
-        """Begin pulling messages and routing them."""
-        if self._listening:
-            return {"status": "already_listening"}
+    def _ensure_bq_table(self):
+        """Create BigQuery table with JSON column if not exists"""
+        try:
+            self.bq_client.get_table(self.table_ref)
+            logger.info(f"BigQuery table {self.table_ref} exists")
+        except Exception:
+            schema = [bigquery.SchemaField("log_entry", "JSON")]
+            table = bigquery.Table(self.table_ref, schema=schema)
+            self.bq_client.create_table(table)
+            logger.info(f"Created BigQuery table {self.table_ref}")
 
-        def callback(message: Message):            
-            data = message.data.decode("utf-8") #json string
-            # Wrap the JSON string under the "log_entry" key for BigQuery
-            rpc = {
-                "jsonrpc": "2.0",
-                "method": "insert_log",
-                "params": {"log_entry": data},
-                "id": 1
-            }
+    def manual_pull_insert(self, max_messages: int = 50) -> dict:
+        """Manual pull and insert for testing (like your script)"""
+        try:
+            response = self.subscriber.pull(
+                request={"subscription": self.sub_path, "max_messages": max_messages},
+                timeout=30
+            )
+        except Exception as e:
+            raise RuntimeError(f"Pub/Sub pull failed: {e}")
+
+        if not response.received_messages:
+            return {"message": "No messages available"}
+
+        entries = []
+        ack_ids = []
+        for msg in response.received_messages:
             try:
-                resp = httpx.post(self.bq_sink_url, json=rpc, timeout=5.0)
-                resp.raise_for_status()
-                content = resp.json()
-                if "error" in content:
-                    raise RuntimeError(f"BigQuery sink error: {content['error']}")
-                logger.info("Successfully routed log to BigQuery sink")
-                message.ack()
-            except Exception as e:
-                logger.exception("failed to route log, nacking")
-                message.nack()
+                entry = json.loads(msg.message.data.decode("utf-8"))
+                entries.append({"log_entry": json.dumps(entry)})
+                ack_ids.append(msg.ack_id)
+            except json.JSONDecodeError:
+                logger.error("Malformed JSON message, skipping")
 
-        future = self.subscriber.subscribe(self.sub_path, callback=callback)
-        threading.Thread(target=future.result, daemon=True).start()
-        self._listening = True
-        logger.info("Started Pub/Sub listener on %s", self.sub_path)
-        return {"status": "listening", "subscription": self.sub_path}
+        # Acknowledge valid messages
+        if ack_ids:
+            self.subscriber.acknowledge(
+                request={"subscription": self.sub_path, "ack_ids": ack_ids}
+            )
 
-    def route_log(self, log_entry: str) -> dict:
-        """Manually route one JSON-string log entry via A2A."""
-        rpc = {
-            "jsonrpc": "2.0",
-            "method": "insert_log",
-            "params": {"log_entry": log_entry},
-            "id": 1
+        # Insert to BigQuery
+        if entries:
+            errors = self.bq_client.insert_rows_json(
+                self.table_ref, 
+                entries,
+                ignore_unknown_values=True
+            )
+            if errors:
+                return {"error": errors}
+
+        return {
+            "processed": len(entries),
+            "acked": len(ack_ids),
+            "errors": len(response.received_messages) - len(entries)
         }
-        resp = httpx.post(self.bq_sink_url, json=rpc, timeout=5.0)
-        resp.raise_for_status()
-        data = resp.json()
-        if "error" in data:
-            raise RuntimeError(f"BigQuery sink error: {data['error']}")
-        return {"routed": True}

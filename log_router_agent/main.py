@@ -14,6 +14,16 @@ class JSONRPCRequest(BaseModel):
     params: Optional[Dict[str,Any]] = {}
     id: Optional[int | str]
 
+
+@app.post("/test_manual")
+async def test_manual(max_messages: int = 50):
+    """Test endpoint that mimics the manual script behavior"""
+    try:
+        result = mcp_tools.MCP().manual_pull_insert(max_messages)
+        return result
+    except Exception as e:
+        return {"error": str(e)}
+    
 @app.post("/a2a")
 async def rpc(req: JSONRPCRequest):
     if req.jsonrpc!="2.0":
@@ -31,13 +41,6 @@ async def rpc(req: JSONRPCRequest):
     except Exception as e:
         logger.exception("RPC error")
         return {"jsonrpc":"2.0","id":req.id,"error":{"code":-32603,"message":"Internal error","data":str(e)}}
-
-@app.on_event("startup")
-def on_start():
-    try:
-        tools.start_subscription()
-    except Exception as e:
-        logger.error("Startup listener failed: %s", e)
 
 @app.get("/health")
 async def health():
