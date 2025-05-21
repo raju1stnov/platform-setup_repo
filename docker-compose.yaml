@@ -61,17 +61,31 @@ services:
     depends_on:
       - a2a_registry
 
+  chat_agent:
+    build: ./chat_agent
+    ports:
+      - "8109:8000"
+    env_file: .env
+    networks:
+      - agents_net
+    volumes:      
+      - ./application_default_credentials.json:/app/application_default_credentials.json
+    environment:
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/application_default_credentials.json  
+    depends_on:
+      - a2a_registry
+      - query_planner_agent
+      - sink_registry_agent
+
   log_ingest_agent:
     build: ./log_ingest_agent
     container_name: log_ingest_agent
-    ports: ["8107:8000"]
+    ports: ["8107:8000"] 
     env_file: .env
-    volumes:
+    volumes:      
       - ./application_default_credentials.json:/app/application_default_credentials.json
     environment:
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/application_default_credentials.json
-      - GCP_PROJECT_ID=${PROJECT_ID}         # map external → internal name
-      - PUBSUB_TOPIC=${PUBSUB_TOPIC}
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/application_default_credentials.json       
       - LOG_ROUTER_URL=http://log_router_agent:8000
     networks: [agents_net]
     depends_on: [a2a_registry]
@@ -81,15 +95,51 @@ services:
     container_name: log_router_agent
     ports: ["8108:8000"]
     env_file: .env
+    volumes:      
+      - ./application_default_credentials.json:/app/application_default_credentials.json
     environment:
-      - GCP_PROJECT_ID=${PROJECT_ID}
-      - PUBSUB_SUBSCRIPTION=${PUBSUB_SUBSCRIPTION}
-      - BQ_DATASET=${DATASET_ID}
-      - BQ_TABLE=${TABLE_ID}
-    volumes:
-      - ./application_default_credentials.json:/app/application_default_credentials.json  
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/application_default_credentials.json         
     networks: [agents_net]
-    depends_on: [a2a_registry]  
+    depends_on: [a2a_registry]    
+
+  query_planner_agent:
+    build: ./query_planner_agent
+    ports:
+      - "8110:8000"
+    env_file: .env
+    networks:
+      - agents_net
+    volumes:      
+      - ./application_default_credentials.json:/app/application_default_credentials.json
+      - ./dbservice_agent/data:/app/data
+    environment:      
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/application_default_credentials.json # <<< ADD THIS
+      # Ensure these are defined in your .env file or set directly here
+      - GCP_PROJECT_FOR_VERTEX=${GCP_PROJECT_FOR_VERTEX}
+      - GCP_LOCATION_FOR_VERTEX=${GCP_LOCATION_FOR_VERTEX}
+      - LLM_MODEL_NAME_FOR_QPA=${LLM_MODEL_NAME_FOR_QPA}
+      - SINK_REGISTRY_AGENT_URL=http://sink_registry_agent:8000/a2a
+    depends_on:
+      - a2a_registry
+      - sink_registry_agent
+
+  analytics_agent:
+    build: ./analytics_agent
+    ports:
+      - "8111:8000"
+    networks:
+      - agents_net
+    depends_on:
+      - a2a_registry
+
+  sink_registry_agent:
+    build: ./sink_registry_agent
+    ports:
+      - "8112:8000"
+    networks:
+      - agents_net
+    volumes:
+      - ./sink_registry_agent/data:/app/data   
 
 networks:
   agents_net:

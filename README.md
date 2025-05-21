@@ -4,6 +4,26 @@ docker-compose down -v  # Remove containers and volumes
 docker-compose build --no-cache  # Force fresh rebuild
 docker-compose up -d
 
+**rebuild images**
+docker-compose build chat_agent query_planner_agent analytics_agent
+
+**start / recreate the containers**
+docker-compose up -d chat_agent query_planner_agent analytics_agent
+
+**mistral-7b-instruct-v0.1.Q4_0.gguf download link**
+
+```
+https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.1-GGUF/resolve/main/mistral-7b-instruct-v0.1.Q4_0.gguf
+```
+
+ **Quick one-liner llama-cpp-python installation**
+
+```bash
+pip install llama-cpp-python --upgrade --force-reinstall --no-cache-dir \
+  --only-binary=llama-cpp-python \
+  --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+```
+
 ```css
 platform-setup_repo/
 ├── auth_agent/
@@ -25,6 +45,16 @@ platform-setup_repo/
 │   ├── Dockerfile
 │   └── logging_config.yml
 ├── dbservice_agent/
+│   ├── data/
+│   ├──  | candidates.db
+│   ├── main.py
+│   ├── mcp_tools.py
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── logging_config.yml
+├── sink_registry_agent/
+│   ├── data/
+│   ├──  | sinks.json
 │   ├── main.py
 │   ├── mcp_tools.py
 │   ├── requirements.txt
@@ -37,11 +67,40 @@ platform-setup_repo/
 │   ├── Dockerfile
 │   └── logging_config.yml
 ├── a2a_registry/
+│   ├── data/
+│   ├──  | agents_registry.db
 │   ├── main.py
 │   ├── mcp_tools.py
 │   ├── requirements.txt
 │   ├── Dockerfile
 │   └── logging_config.yml
+├── log_router_agent/        
+│   ├── main.py
+│   ├── mcp_tools.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── log_ingest_agent/       
+│   ├── main.py
+│   ├── mcp_tools.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── chat_agent/   
+│   ├── model/
+│   ├── ├ ── mistral-7b-instruct-v0.1.Q4_0.gguf    
+│   ├── main.py
+│   ├── mcp_tools.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── query_planner_agent/       
+│   ├── main.py
+│   ├── mcp_tools.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── analytics_agent/       
+│   ├── main.py
+│   ├── mcp_tools.py
+│   ├── requirements.txt
+│   └── Dockerfile
 └── docker-compose.yml
 
 ```
@@ -140,7 +199,6 @@ This agent subscribes to a Pub/Sub subscription (that your Cloud Logging sink pu
 ## log_router_agent
 
 The router agent receives log entries (via the `/a2a` JSON-RPC endpoint) and determines where to send them. In our setup, all logs are forwarded to the BigQuery sink agent. The implementation can be extended with filtering or routing rules (e.g., based on log severity or source) if needed.
-
 
 ## Webservice Agent Service (`webservice_agent`)
 

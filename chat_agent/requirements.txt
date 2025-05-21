@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+httpx
+langchain
+langchain-core
+aiohttp
+langchain-google-vertexai
+google-cloud-aiplatform

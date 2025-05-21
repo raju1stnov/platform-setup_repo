@@ -2,3 +2,26 @@ myenv
 __pycache__/
 *.py[cod]
 manual_log_pipeline_test.py
+*.bkp
+*.dtmp
+*.gguf
+combined_information.txt
+application_default_credentials.json
+important.txt
+*.key
+*.pem
+.env
+.env.*
+secrets/
+local_secrets/
+model_test/
+
+# === Build Artifacts ===
+dist/
+build/
+.env
+
+
+# === Local LLM Models ===
+*.gguf
+*.bin

@@ -1,7 +1,6 @@
 fastapi
-uvicorn[standard]
+uvicorn
+pydantic
 google-cloud-pubsub
 google-cloud-bigquery
 google-cloud-logging
-protobuf
-httpx

@@ -1,0 +1,8 @@
+[
+    {
+      "name": "log_entry",
+      "type": "JSON",
+      "mode": "NULLABLE",
+      "description": "A single JSON column to store log entries."
+    }
+  ]

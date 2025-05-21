@@ -1,0 +1,35 @@
+{
+  "candidates_db_main": {    
+      "sink_id": "candidates_db_main",
+      "name": "Candidates Database (SQLite)",
+      "description": "SQLite database for storing candidate information.",
+      "sink_type": "sqlite",
+      "connection_ref": "/app/data/candidates.db",
+      "schema_definition": {
+        "table_name": "candidates",
+        "columns": [
+            {"name": "id", "type": "INTEGER", "pk": true},
+            {"name": "name", "type": "TEXT"},
+            {"name": "title", "type": "TEXT"},
+            {"name": "skills", "type": "TEXT"}
+        ]
+      }      
+    },
+    "error_logs_main": {    
+      "sink_id": "error_logs_main",
+      "name": "Error Logs (BigQuery)",
+      "description": "BigQuery table for storing application error logs.",
+      "sink_type": "bigquery",
+      "connection_ref": {
+          "project_id": "lexical-pathway-459602-t0",
+          "dataset_id": "low_code_dataset",
+          "table_id": "log_table"
+        },
+        "schema_definition": {
+            "table_name": "log_table",
+            "columns": [{ "name": "log_entry", "type": "JSON" } ]
+        },    
+        "query_agent_method": "query_planner_agent.plan_and_execute_query",
+        "schema_agent_method": "query_planner_agent.plan_and_execute_query"
+      }      
+}

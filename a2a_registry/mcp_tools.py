@@ -79,7 +79,7 @@ AGENT_CARDS_SEED_DATA = [
         "name": "dbservice_agent",
         "description": "Stores and retrieves candidate records",
         "url": "http://dbservice_agent:8000/a2a",
-        "url_ext": "http://localhost:8102/a2a", # Host-accessible endpoint
+        "url_ext": "http://localhost:8102/a2a",
         "methods": [
             create_method_metadata(
                 name="create_record",
@@ -115,6 +115,27 @@ AGENT_CARDS_SEED_DATA = [
                     {"name": "$result", "type": "object", "description": "The candidate record (id, name, title, skills list) or empty object if not found"}
                 ]
             ),
+            create_method_metadata(
+                name="execute_query",
+                description="Executes a read-only SQL query against the candidates database. Only SELECT statements are allowed.",
+                params=[
+                    {"name": "query",       "type": "string", "required": True,
+                    "description": "SELECT statement to run"},
+                    {"name": "parameters",  "type": "object", "required": False,
+                    "description": "Optional mapping for parameterised query (e.g. {'skill':'Python'})"}
+                ],
+                returns=[
+                    {"name": "$result", "type": "object", "description": "Object containing 'results' (array of row objects) on success, or 'error' object on failure."}
+                ]
+            ),
+            create_method_metadata(
+                name="get_schema",
+                description="Retrieves the schema (columns and types) for the 'candidates' table.",
+                params=[],
+                returns=[
+                    {"name": "$result", "type": "object", "description": "Object containing 'schema' {table_name, columns: [{name, type, required}]} on success, or 'error' object on failure."}
+                ]
+            )
         ]
     },
     {
@@ -161,8 +182,7 @@ AGENT_CARDS_SEED_DATA = [
                     {"name": "method_name", "type": "string", "required": True, "description": "Name of the method"}
                 ],
                 returns=[{"name": "$result", "type": "object", "description": "Method metadata object or empty if not found"}]
-            ),
-            # Maybe add register/unregister methods here later if needed
+            ),            
         ]
     },
     {
@@ -208,21 +228,160 @@ AGENT_CARDS_SEED_DATA = [
         "url_ext": "http://localhost:8108/a2a",
         "methods": [
             create_method_metadata(
-                name="start_subscription",
+                name="manual_pull_insert",
                 description="Begin listening on the Pub/Sub subscription and routing logs.",                
-                params=[],
-                returns=[{"name": "status", "type": "string",
-                          "description": "'listening' or 'already_listening'"}]
-            ),    
-            create_method_metadata(
-                name="route_log",
-                description="Route one JSON-string log entry to the BigQuery sink.",
-                params=[{"name": "log_entry", "type": "string", "required": True,
-                         "description": "The JSON-string log payload"}],
-                returns=[{"name": "routed", "type": "boolean", "description": "True if successful"}]
-            )        
+                params=[{"name": "max_messages", "type": "integer", "required": False, "description": "Maximum messages to pull (default 50)"}], # Added optional param
+                returns=[{ # Return structure matches the agent's actual output
+                    "name": "processed", "type": "integer", "description": "Number of entries successfully inserted into BigQuery."},
+                    {"name": "acked", "type": "integer", "description": "Number of messages acknowledged from Pub/Sub."},
+                    {"name": "errors", "type": "integer", "description": "Number of messages that failed JSON decoding or BQ insertion."},
+                    {"name": "message", "type": "string", "description": "Status message, e.g., if no messages were available."}
+                ]
+            )            
         ]
-    }
+    },
+    {
+        "name": "chat_agent",
+        "description": "Interactive LLM chat service with optional routing to the query-planner.",
+        "url": "http://chat_agent:8000/a2a",
+        "url_ext": "http://localhost:8109/a2a",
+        "methods": [
+            create_method_metadata(
+                name="process_message",
+                description="Generate an LLM response and keep session context. "
+                            "Automatically routes to the query_planner_agent when "
+                            "the LLM flags that an SQL query is required.",
+                params=[
+                    {"name": "prompt",      "type": "string", "required": True,
+                     "description": "The users message"},
+                    {"name": "session_id",  "type": "string", "required": False,
+                     "description": "Conversation session key (default = 'default')"},
+                    {"name": "sink_id", "type": "string", "required": False, # Added sink_id
+                     "description": "Optional ID of the data sink to query (for data-related questions)."}
+                ],
+                returns=[ 
+                    {"name": "response", "type": "any", "description": "The actual response content (text, table data, image data, or error object)."},
+                    {"name": "response_type", "type": "string", "description": "Type of the response (e.g., 'text', 'table', 'image', 'error')."},
+                    {"name": "session_id", "type": "string", "description": "The session ID for the conversation."},
+                    {"name": "context", "type": "array[object]", "required": False, "description": "Updated conversation history."}
+                ]
+            )
+        ]
+    },
+    {
+        "name": "query_planner_agent",
+        "description": "Turns natural-language analysis from the chat_agent into safe SQL templates.",
+        "url": "http://query_planner_agent:8000/a2a",
+        "url_ext": "http://localhost:8110/a2a",
+        "methods": [
+            create_method_metadata(
+                name="plan_and_execute_query",
+                description="Receives user intent and sink ID, plans, and executes the query using the appropriate data adapter.",
+                params=[ # These match QueryPlannerRequest from QPA's main.py
+                {"name": "user_intent", "type": "string", "required": True, "description": "Natural language or structured query intent."},
+                {"name": "sink_id", "type": "string", "required": True, "description": "Identifier of the target data sink."},
+                {"name": "llm_analysis", "type": "object", "required": False, "description": "Optional preliminary analysis from chat agent."}
+                ],
+                returns=[ # These reflect the QueryResult Pydantic model structure
+                    {"name": "success", "type": "boolean", "description": "True if query succeeded."},
+                    {"name": "columns", "type": "array[string]", "required": False, "description": "Column names if applicable."},
+                    {"name": "rows", "type": "array[object]", "required": False, "description": "Data rows if applicable."},
+                    {"name": "row_count", "type": "integer", "required": False, "description": "Number of rows affected/returned."},
+                    {"name": "error_message", "type": "string", "required": False, "description": "Error message if failed."},
+                    {"name": "metadata", "type": "object", "required": False, "description": "Additional execution metadata."}
+                ]
+            )
+        ]
+    },
+    {
+        "name": "analytics_agent",
+        "description": "Lightweight data-analytics helper (parameter extraction, NL-to-SQL, viz).",
+        "url": "http://analytics_agent:8000/a2a",
+        "url_ext": "http://localhost:8111/a2a",
+        "methods": [
+            create_method_metadata(
+                name="extract_parameters",
+                description="Parse an NL prompt and infer structured parameters "
+                            "(skills, experience, location, …).",
+                params=[{"name": "prompt", "type": "string", "required": True,
+                         "description": "Natural-language request"}],
+                returns=[{"name": "$result", "type": "object",
+                          "description": "{skills:list, min_experience:int, locations:list}"}]
+            ),
+            create_method_metadata(
+                name="natural_language_to_sql",
+                description="Very small NL-to-SQL helper that builds a candidates-table WHERE clause.",
+                params=[{"name": "prompt", "type": "string", "required": True,
+                         "description": "Natural-language request"}],
+                returns=[{"name": "$result", "type": "object",
+                          "description": "{query:str, parameters:dict}"}]
+            ),
+            create_method_metadata(
+                name="generate_visualization",
+                description="Return a base64-PNG bar chart of a supplied result set (POC only).",
+                params=[{"name": "query_results", "type": "object", "required": True,
+                         "description": "Result dict produced by a DB or analytics call"}],
+                returns=[{"name": "$result", "type": "object",
+                          "description": "{image:str(base64 PNG)} or {error:str}"}]
+            )
+        ]
+    },
+    {
+        "name": "sink_registry_agent",
+        "description": "Manages metadata about data sinks accessible by the platform.",
+        "url": "http://sink_registry_agent:8000/a2a", 
+        "url_ext": "http://localhost:8112/a2a", 
+        "methods":[
+            create_method_metadata(
+                name="register_sink",
+                description="Registers or updates a sinks metadata.",
+                params=[
+                    {"name": "sink_id",            "type": "string",  "required": True,  "description": "Unique identifier for the sink"},
+                    {"name": "name",               "type": "string",  "required": True,  "description": "Human-readable name"},
+                    {"name": "description",        "type": "string",  "required": False, "description": "Long-form description"},
+                    {"name": "sink_type",          "type": "string",  "required": True,  "description": "Category (e.g., 'bigquery', 's3')"},
+                    {"name": "connection_ref",     "type": "object",  "required": True,  "description": "Connection details / DSN"},
+                    {"name": "schema_definition",  "type": "object",  "required": False, "description": "DDL or JSON schema for the sink"},
+                    {"name": "query_agent_method", "type": "string",  "required": False, "description": "Agent method for querying this sink"},
+                    {"name": "schema_agent_method","type": "string",  "required": False, "description": "Agent method for fetching schema"}
+                ],
+                returns=[
+                    {"name": "$result", "type": "object", "description": "{status: 'registered', sink_id: string} on success, or {error: string} on failure."}
+                ]
+            ),
+            create_method_metadata(
+                name="get_sink_details",
+                description="Retrieves metadata for a specific sink by ID.",
+                params=[
+                    {"name": "sink_id", "type": "string", "required": True,
+                    "description": "ID of the sink to retrieve"}
+                ],
+                returns=[
+                    {"name": "$result", "type": "object",
+                    "description": "Sink metadata object, or empty object if not found"}
+                ]
+            ),
+            create_method_metadata(
+                name="list_sinks",
+                description="Lists available sinks (ID and Name) for UI selection.",
+                params=[], # No parameters needed
+                returns=[
+                    {"name": "$result", "type": "array[object]", "description": "List of sink objects, each containing 'sink_id' and 'name'."}
+                ]
+            ),
+            create_method_metadata(
+                name="delete_sink",
+                description="Deletes a sink registration by ID.",
+                params=[
+                    {"name": "sink_id", "type": "string", "required": True,
+                    "description": "ID of the sink to delete"}
+                ],
+                returns=[
+                     {"name": "$result", "type": "object", "description": "{status: 'deleted', sink_id: string} on success, or {error: string} on failure."}
+                ]
+            ),
+        ]
+    },
 ]
 
 # --- Database Interaction Functions ---
